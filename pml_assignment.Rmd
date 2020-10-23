@@ -1,0 +1,124 @@
+---
+title: "PML assignment"
+author: "Denvir Gama"
+date: "10/22/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The following Libraries are used in this project and the seed value is loaded here
+```{r }
+library(rattle)
+library(caret)
+library(rpart)
+library(RColorBrewer)
+library(corrplot)
+library(rpart.plot)
+library(randomForest)
+set.seed(100020)
+```  
+
+## Reading Data
+
+```{r}
+trainRaws <- read.csv(file.choose())
+testRaws <- read.csv(file.choose())
+dim(trainRaws)
+dim(testRaws)
+
+```  
+  
+
+## Cleaning Data  
+Here we will get rid of unwanted data like NA, data which donot contribute much
+
+1. Near zero variance variables are cleaned here  
+```{r}
+NZV <- nearZeroVar(trainRaws, saveMetrics = TRUE)
+head(NZV, 20)
+training1s <- trainRaws[, !NZV$nzv]
+testing1s <- testRaws[, !NZV$nzv]
+dim(training1s)
+dim(testing1s)
+rm(trainRaws)
+rm(testRaws)
+rm(NZV)
+```  
+
+2. Values which do not contribute much are removed here
+```{r}
+regex <- grepl("^X|timestamp|user_name", names(training1s))
+training <- training1s[, !regex]
+testing <- testing1s[, !regex]
+rm(regex)
+rm(training1s)
+rm(testing1s)
+dim(training)
+dim(testing)
+```  
+
+3. Removing NA's  
+```{r}
+cond <- (colSums(is.na(training)) == 0)
+training <- training[, cond]
+testing <- testing[, cond]
+rm(cond)
+```  
+
+
+Training data set corelation matrix 
+```{r}
+corrplot(cor(training[, -length(names(training))]), method = "circle", tl.cex = 0.4 )
+```  
+
+next we split the cleaned data set into two parts pure set and a validation set . we will be using the pure training set here, the validation data will be used later on.
+```{r}
+set.seed(10119)
+inTraining <- createDataPartition(training$classe, p = 0.70, list = FALSE)
+validation <- training[-inTraining, ]
+training <- training[inTraining, ]
+rm(inTraining)
+```  
+
+
+##Desicion Tree
+we use decision tree for fitting of a predective model 
+```{r }
+modelTree <- rpart(classe ~ ., data = training, method = "class")
+prp(modelTree)
+```  
+
+
+```{r }
+predictTree <- predict(modelTree, validation, type = "class")
+confusionMatrix(validation$classe, predictTree)
+accuracy <- postResample(predictTree, validation$classe)
+ose <- 1 - as.numeric(confusionMatrix(validation$classe, predictTree)$overall[1])
+rm(predictTree)
+rm(modelTree)
+```  
+
+### Random Forest
+We fit a predictive model for activity recognition using <b>Random Forest</b> algorithm  
+```{r }
+modelRF <- train(classe ~ ., data = training, method = "rf", trControl = trainControl(method = "cv", 5), ntree = 250)
+modelRF
+predictRF <- predict(modelRF, validation)
+confusionMatrix(validation$classe, predictRF)
+accuracy <- postResample(predictRF, validation$classe)
+ose <- 1 - as.numeric(confusionMatrix(validation$classe, predictRF)$overall[1])
+rm(predictRF)
+```  
+
+We conclude Better results can be otained using Random Forests  
+
+## Predicting The Manner of Exercise for Test Data Set  
+Now, for the original data set downloaded from data source we apply the <b>Random Forest</b> model. We remove the problem_id column first.  
+```{r}
+rm(accuracy)
+rm(ose)
+predict(modelRF, testing[, -length(names(testing))])
+```  
